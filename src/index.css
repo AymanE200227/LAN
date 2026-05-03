@@ -1,0 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 97%;
+    --foreground: 220 20% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 14%;
+
+    --primary: 12 85% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 220 18% 24%;
+
+    --muted: 220 10% 94%;
+    --muted-foreground: 220 10% 36%;
+
+    --accent: 24 92% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 12 85% 48%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 15% 30%;
+    --sidebar-primary: 12 85% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 95%;
+    --sidebar-accent-foreground: 220 20% 14%;
+    --sidebar-border: 220 14% 92%;
+    --sidebar-ring: 12 85% 48%;
+
+    --muscle: 12 85% 48%;
+    --muscle-light: 18 88% 58%;
+    --muscle-dark: 8 75% 36%;
+    --tendon: 28 92% 52%;
+    --bone: 38 20% 72%;
+    --bone-dark: 32 16% 50%;
+    --surface: 220 14% 96%;
+    --surface-hover: 220 14% 93%;
+    --success: 152 60% 40%;
+    --warning: 42 90% 50%;
+    --info: 210 85% 50%;
+
+    /* Card accent colors */
+    --card-orange: 24 95% 50%;
+    --card-blue: 210 85% 50%;
+    --card-green: 152 60% 42%;
+    --card-purple: 270 60% 55%;
+    --card-rose: 350 80% 55%;
+    --card-amber: 38 92% 50%;
+
+    font-family: 'Manrope', system-ui, sans-serif;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-size: 16px;
+    line-height: 1.65;
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+}
+
+@layer utilities {
+  .gradient-muscle {
+    background: linear-gradient(135deg, hsl(12 85% 48%), hsl(24 92% 50%));
+  }
+
+  .gradient-muscle-soft {
+    background: linear-gradient(135deg, hsl(12 85% 48% / 0.08), hsl(24 92% 50% / 0.05));
+  }
+
+  .gradient-tendon {
+    background: linear-gradient(135deg, hsl(12 85% 48%), hsl(28 92% 52%));
+  }
+
+  .gradient-surface {
+    background: linear-gradient(180deg, hsl(0 0% 97%) 0%, hsl(220 14% 95%) 100%);
+  }
+
+  .gradient-card-blue {
+    background: linear-gradient(135deg, hsl(210 85% 50% / 0.06), hsl(210 85% 50% / 0.02));
+  }
+
+  .gradient-card-green {
+    background: linear-gradient(135deg, hsl(152 60% 42% / 0.06), hsl(152 60% 42% / 0.02));
+  }
+
+  .gradient-card-purple {
+    background: linear-gradient(135deg, hsl(270 60% 55% / 0.06), hsl(270 60% 55% / 0.02));
+  }
+
+  .gradient-card-rose {
+    background: linear-gradient(135deg, hsl(350 80% 55% / 0.06), hsl(350 80% 55% / 0.02));
+  }
+
+  .gradient-card-amber {
+    background: linear-gradient(135deg, hsl(38 92% 50% / 0.06), hsl(38 92% 50% / 0.02));
+  }
+
+  .gradient-card-orange {
+    background: linear-gradient(135deg, hsl(24 95% 50% / 0.06), hsl(24 95% 50% / 0.02));
+  }
+
+  .text-muscle-gradient {
+    background: linear-gradient(135deg, hsl(12 85% 48%), hsl(28 92% 52%), hsl(18 88% 52%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .border-muscle-subtle {
+    border-color: hsl(12 85% 48% / 0.12);
+  }
+
+  .glow-muscle {
+    box-shadow: 0 0 20px hsl(12 85% 48% / 0.08), 0 0 60px hsl(12 85% 48% / 0.03);
+  }
+
+  .shadow-card {
+    box-shadow:
+      0 1px 3px hsl(220 20% 14% / 0.04),
+      0 4px 12px hsl(220 20% 14% / 0.06);
+  }
+
+  .shadow-card-hover {
+    box-shadow:
+      0 2px 8px hsl(220 20% 14% / 0.06),
+      0 8px 24px hsl(220 20% 14% / 0.08);
+  }
+
+  .shadow-elevated {
+    box-shadow:
+      0 0 0 1px hsl(220 14% 90% / 0.6),
+      0 4px 16px hsl(220 20% 14% / 0.06),
+      0 12px 40px hsl(220 20% 14% / 0.04);
+  }
+
+  /* Aliases for backward compat */
+  .gradient-gold { background: linear-gradient(135deg, hsl(12 85% 48%), hsl(24 92% 50%)); }
+  .text-gold-gradient {
+    background: linear-gradient(135deg, hsl(12 85% 48%), hsl(28 92% 52%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .border-gold-subtle { border-color: hsl(12 85% 48% / 0.12); }
+  .glow-gold { box-shadow: 0 0 20px hsl(12 85% 48% / 0.08); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(220 14% 82%); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(12 85% 48% / 0.4); }
+
+/* Print */
+@media print {
+  body { background: white !important; color: black !important; }
+  .print\:hidden, header, aside, nav { display: none !important; }
+  #print-area { box-shadow: none !important; }
+}
