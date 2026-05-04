@@ -5,7 +5,7 @@ import { Course, CourseFile } from '@/types';
 import { Button } from '@/components/ui/button';
 import {
   ArrowLeft, Upload, Trash2, FileText, Video, File, Image, X,
-  FolderOpen, Download, Play, Search
+  FolderOpen, Download, Play, Search, Scale, Pencil
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -50,6 +50,8 @@ export default function AdminCourseEdit() {
   const [search, setSearch] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingBareme, setEditingBareme] = useState(false);
+  const [baremeInput, setBaremeInput] = useState(String(course?.bareme || 1));
 
   const backPath = stageId ? `/admin/stages/${stageId}` : '/admin/stages';
 
@@ -138,6 +140,63 @@ export default function AdminCourseEdit() {
             {course.title}
           </h1>
           <p className="text-[12px] text-muted-foreground font-body mt-0.5">{course.description || 'Pas de description'}</p>
+        </div>
+        {/* Barème / Coefficient */}
+        <div className="flex items-center gap-2">
+          {editingBareme ? (
+            <div className="flex items-center gap-1.5">
+              <Scale className="w-4 h-4 text-primary/60" />
+              <Input
+                type="number" min="1" step="0.5"
+                value={baremeInput}
+                onChange={e => setBaremeInput(e.target.value)}
+                className="w-20 h-8 text-[12px] rounded-lg border-primary/30 text-center"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = parseFloat(baremeInput);
+                    if (!isNaN(val) && val > 0) {
+                      const updated = { ...course, bareme: val };
+                      setCourse(updated);
+                      saveCourse(updated);
+                      toast.success(`Barème mis à jour: ${val}`);
+                    }
+                    setEditingBareme(false);
+                  }
+                  if (e.key === 'Escape') setEditingBareme(false);
+                }}
+              />
+              <button
+                onClick={() => {
+                  const val = parseFloat(baremeInput);
+                  if (!isNaN(val) && val > 0) {
+                    const updated = { ...course, bareme: val };
+                    setCourse(updated);
+                    saveCourse(updated);
+                    toast.success(`Barème mis à jour: ${val}`);
+                  }
+                  setEditingBareme(false);
+                }}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors"
+              >OK</button>
+              <button onClick={() => setEditingBareme(false)} className="text-[11px] px-2 py-1.5 rounded-lg bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setEditingBareme(true); setBaremeInput(String(course.bareme || 1)); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/8 hover:bg-primary/15 border border-primary/15 transition-all group"
+              title="Modifier le barème / coefficient"
+            >
+              <Scale className="w-4 h-4 text-primary/60" />
+              <div className="text-left">
+                <p className="text-[10px] text-muted-foreground font-body leading-none">Barème</p>
+                <p className="text-[14px] font-bold text-primary font-display leading-tight">Coef. {course.bareme || 1}</p>
+              </div>
+              <Pencil className="w-3 h-3 text-primary/30 group-hover:text-primary/60 transition-colors" />
+            </button>
+          )}
         </div>
       </div>
 

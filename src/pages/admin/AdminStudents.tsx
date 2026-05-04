@@ -1,143 +1,302 @@
-﻿import React, { useState } from 'react';
-import { getStudents, saveUser, deleteUser, genId, getAttempts, getQuizzes, getStages, getCoursesByStage } from '@/lib/store';
-import { User, convertToGrade } from '@/types';
+import React, { useState, useCallback, useMemo } from 'react';
+import { getStudents, saveUser, deleteUser, genId, getAttempts, getQuizzes, getStages, getCoursesByStage, getCourses, saveCourse } from '@/lib/store';
+import { User, Course, Quiz, QuizAttempt, convertToGrade } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import {
   Plus, Pencil, Trash2, Users, X, Ban, CheckCircle2,
   GraduationCap, ChevronDown, ChevronRight, BookOpen, Award,
-  ClipboardList, ArrowLeft
+  ClipboardList, ArrowLeft, Search, TrendingUp, BarChart3,
+  User as UserIcon, Calendar, Hash, Shield, Eye, Scale
 } from 'lucide-react';
 
-type MainTab = 'list' | 'notes';
+/* ─── helpers ─── */
+function gradeColor(pct: number | null): string {
+  if (pct === null) return 'text-muted-foreground';
+  if (pct >= 70) return 'text-success';
+  if (pct >= 50) return 'text-amber-500';
+  return 'text-destructive';
+}
 
-/* --- Notes detail for one student --- */
-function StudentNotesDetail({ student, onClose }: { student: User; onClose: () => void }) {
+function gradeBg(pct: number | null): string {
+  if (pct === null) return 'bg-muted';
+  if (pct >= 70) return 'bg-success';
+  if (pct >= 50) return 'bg-amber-500';
+  return 'bg-destructive';
+}
+
+function ringStyle(pct: number, size: number, stroke: number) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  return { circumference: c, offset: c - (pct / 100) * c, r };
+}
+
+/* ─── Grade Ring SVG ─── */
+function GradeRing({ pct, size = 64, stroke = 5, label }: { pct: number; size?: number; stroke?: number; label?: string }) {
+  const { circumference, offset, r } = ringStyle(pct, size, stroke);
+  const center = size / 2;
+  const color = pct >= 70 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={center} cy={center} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-border" />
+        <circle cx={center} cy={center} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round" className="transition-all duration-700 ease-out" />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[11px] font-bold font-display" style={{ color }}>{label || `${pct}%`}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*                    STUDENT PROFILE VIEW                       */
+/* ═══════════════════════════════════════════════════════════════ */
+function StudentProfile({ student, onClose }: { student: User; onClose: () => void }) {
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
-  const attempts = getAttempts().filter(a => a.studentId === student.id && (a.status === 'completed' || a.status === 'submitted'));
-  const quizzes = getQuizzes();
-  const stages = getStages();
+  const [baremeEditing, setBaremeEditing] = useState<string | null>(null);
+  const [baremeValue, setBaremeValue] = useState('');
 
-  const stageData = stages.map(stage => {
-    const stageCourses = getCoursesByStage(stage.id);
+  const attempts = useMemo(() =>
+    getAttempts().filter(a => a.studentId === student.id && (a.status === 'completed' || a.status === 'submitted')),
+    [student.id]
+  );
+  const quizzes = useMemo(() => getQuizzes(), []);
+  const stages = useMemo(() => getStages(), []);
+  const allCourses = useMemo(() => getCourses(), []);
+  const [courses, setCourses] = useState(allCourses);
+
+  const refreshCourses = useCallback(() => setCourses(getCourses()), []);
+
+  const handleBaremeSave = useCallback((courseId: string) => {
+    const val = parseFloat(baremeValue);
+    if (isNaN(val) || val <= 0) { toast.error('Coefficient invalide'); return; }
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
+    const updated = { ...course, bareme: val };
+    saveCourse(updated);
+    refreshCourses();
+    setBaremeEditing(null);
+    toast.success(`Barème mis à jour: ${val}`);
+  }, [baremeValue, courses, refreshCourses]);
+
+  // Build stage data with weighted calculation
+  const stageData = useMemo(() => stages.map(stage => {
+    const stageCourses = courses.filter(c => c.stageId === stage.id);
     const stageQuizzes = quizzes.filter(q => q.stageId === stage.id);
     const stageAttempts = attempts.filter(a => stageQuizzes.some(q => q.id === a.quizId));
-    const avg = stageAttempts.length ? Math.round(stageAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / stageAttempts.length) : null;
 
-    // Group by course
+    // Course results with barème
     const courseResults = stageCourses.map(course => {
       const courseQuizzes = stageQuizzes.filter(q => q.courseId === course.id);
       const courseAttempts = stageAttempts.filter(a => courseQuizzes.some(q => q.id === a.quizId));
+      const avg = courseAttempts.length
+        ? Math.round(courseAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / courseAttempts.length)
+        : null;
       return {
         course,
         attempts: courseAttempts.map(att => {
           const quiz = quizzes.find(q => q.id === att.quizId);
           return { ...att, quizTitle: quiz?.title || 'Examen', gradeBase: quiz?.gradeBase || 20 };
         }),
-        avg: courseAttempts.length ? Math.round(courseAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / courseAttempts.length) : null,
+        avg,
+        bareme: course.bareme || 1,
       };
-    }).filter(cr => cr.attempts.length > 0);
+    });
 
-    return { stage, avg, count: stageAttempts.length, courseResults };
-  });
+    // Weighted average for this stage
+    const coursesWithGrades = courseResults.filter(cr => cr.avg !== null);
+    let weightedAvg: number | null = null;
+    if (coursesWithGrades.length > 0) {
+      const totalWeight = coursesWithGrades.reduce((s, cr) => s + cr.bareme, 0);
+      const weightedSum = coursesWithGrades.reduce((s, cr) => s + (cr.avg! * cr.bareme), 0);
+      weightedAvg = Math.round(weightedSum / totalWeight);
+    }
 
-  const overallAvg = attempts.length ? Math.round(attempts.reduce((s, a) => s + (a.percentage || 0), 0) / attempts.length) : 0;
+    return { stage, avg: weightedAvg, count: stageAttempts.length, courseResults };
+  }), [stages, courses, quizzes, attempts]);
+
+  // Overall weighted general note
+  const overallData = useMemo(() => {
+    const allCoursesWithGrades: { avg: number; bareme: number }[] = [];
+    stageData.forEach(sd => {
+      sd.courseResults.forEach(cr => {
+        if (cr.avg !== null) allCoursesWithGrades.push({ avg: cr.avg, bareme: cr.bareme });
+      });
+    });
+    if (allCoursesWithGrades.length === 0) return { avg: 0, totalExams: 0, totalCourses: 0 };
+    const totalWeight = allCoursesWithGrades.reduce((s, c) => s + c.bareme, 0);
+    const weightedSum = allCoursesWithGrades.reduce((s, c) => s + (c.avg * c.bareme), 0);
+    return {
+      avg: Math.round(weightedSum / totalWeight),
+      totalExams: attempts.length,
+      totalCourses: allCoursesWithGrades.length,
+    };
+  }, [stageData, attempts]);
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* Back bar */}
-      <div className="flex items-center gap-3">
-        <button onClick={onClose} className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground font-body transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Retour
-        </button>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl gradient-muscle flex items-center justify-center text-sm font-bold text-primary-foreground shadow-sm">
-            {student.fullName.charAt(0)}
-          </div>
-          <div>
-            <h3 className="text-[15px] font-display font-bold text-foreground">{student.fullName}</h3>
-            <p className="text-[11px] text-muted-foreground font-body">{student.username} • {student.promotion || '—'} • {student.section === '2eme_section' ? '2ème Section' : '1ère Section'}</p>
+    <div className="space-y-6 animate-fade-in">
+      {/* ─── Profile Header ─── */}
+      <div className="rounded-2xl overflow-hidden shadow-elevated border border-border">
+        <div className="bg-gradient-to-r from-primary via-primary/90 to-orange-500 px-6 py-5">
+          <button onClick={onClose} className="flex items-center gap-1.5 text-[12px] text-white/70 hover:text-white font-body transition-colors mb-3">
+            <ArrowLeft className="w-4 h-4" /> Retour aux stagiaires
+          </button>
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-2xl font-bold text-white shadow-lg border border-white/20">
+              {student.fullName.charAt(0)}
+            </div>
+            <div className="flex-1">
+              <h2 className="text-xl font-display font-bold text-white">{student.fullName}</h2>
+              <div className="flex items-center gap-4 mt-1.5">
+                <span className="flex items-center gap-1.5 text-[12px] text-white/80 font-body">
+                  <Hash className="w-3.5 h-3.5" /> {student.username}
+                </span>
+                <span className="flex items-center gap-1.5 text-[12px] text-white/80 font-body">
+                  <Calendar className="w-3.5 h-3.5" /> {student.promotion || '—'}
+                </span>
+                <span className="flex items-center gap-1.5 text-[12px] text-white/80 font-body">
+                  <Shield className="w-3.5 h-3.5" /> {student.section === '2eme_section' ? '2ème Section' : '1ère Section'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="ml-auto px-4 py-2 rounded-xl bg-primary/8 border border-primary/15">
-          <span className="text-[11px] text-muted-foreground font-body">Note Générale</span>
-          <span className="ml-2 text-[15px] font-bold text-primary font-display">{convertToGrade(overallAvg, 20)}</span>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-4 divide-x divide-border bg-card">
+          <div className="px-5 py-4 text-center">
+            <GradeRing pct={overallData.avg} size={52} stroke={4} label={convertToGrade(overallData.avg, 20)} />
+            <p className="text-[10px] text-muted-foreground font-body mt-1.5 uppercase tracking-wider">Note Générale</p>
+          </div>
+          <div className="px-5 py-4 text-center flex flex-col items-center justify-center">
+            <span className="text-2xl font-bold font-display text-foreground">{overallData.totalExams}</span>
+            <p className="text-[10px] text-muted-foreground font-body mt-0.5 uppercase tracking-wider">Examens passés</p>
+          </div>
+          <div className="px-5 py-4 text-center flex flex-col items-center justify-center">
+            <span className="text-2xl font-bold font-display text-foreground">{overallData.totalCourses}</span>
+            <p className="text-[10px] text-muted-foreground font-body mt-0.5 uppercase tracking-wider">Cours évalués</p>
+          </div>
+          <div className="px-5 py-4 text-center flex flex-col items-center justify-center">
+            <span className={`text-2xl font-bold font-display ${overallData.avg >= 50 ? 'text-success' : 'text-destructive'}`}>
+              {overallData.avg >= 50 ? 'Admis' : 'Non admis'}
+            </span>
+            <p className="text-[10px] text-muted-foreground font-body mt-0.5 uppercase tracking-wider">Statut</p>
+          </div>
         </div>
       </div>
 
-      {/* Stages */}
+      {/* ─── Stages / Modules ─── */}
       {stageData.map(sd => (
-        <div key={sd.stage.id} className="rounded-2xl border border-border bg-card overflow-hidden shadow-card">
+        <div key={sd.stage.id} className="rounded-2xl border border-border bg-card overflow-hidden shadow-card transition-shadow hover:shadow-elevated">
           <button
             onClick={() => setExpandedStage(expandedStage === sd.stage.id ? null : sd.stage.id)}
-            className="w-full flex items-center gap-3 px-5 py-4 hover:bg-secondary/30 transition-colors"
+            className="w-full flex items-center gap-4 px-6 py-4 hover:bg-secondary/20 transition-colors"
           >
-            <div className="w-9 h-9 rounded-xl bg-primary/8 flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-primary" />
+            <div className="w-10 h-10 rounded-xl bg-primary/8 flex items-center justify-center">
+              <BookOpen className="w-5 h-5 text-primary" />
             </div>
             <div className="flex-1 text-left">
-              <p className="text-[14px] font-display font-bold text-foreground">{sd.stage.name} <span className="text-muted-foreground font-normal">({sd.stage.code})</span></p>
-              <p className="text-[11px] text-muted-foreground font-body">{sd.count} examen(s) passé(s)</p>
+              <p className="text-[15px] font-display font-bold text-foreground">
+                {sd.stage.name} <span className="text-muted-foreground font-normal text-[13px]">({sd.stage.code})</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground font-body">{sd.count} examen(s) • {sd.courseResults.length} cours</p>
             </div>
-            <div className="text-right mr-3">
-              {sd.avg !== null ? (
-                <span className={`text-[15px] font-bold font-display ${sd.avg >= 50 ? 'text-success' : 'text-destructive'}`}>{convertToGrade(sd.avg, 20)}</span>
-              ) : (
-                <span className="text-[12px] text-muted-foreground">—</span>
-              )}
-            </div>
-            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ${expandedStage === sd.stage.id ? 'rotate-180' : ''}`} />
+            {sd.avg !== null && (
+              <div className="mr-3">
+                <GradeRing pct={sd.avg} size={44} stroke={4} label={convertToGrade(sd.avg, 20)} />
+              </div>
+            )}
+            <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform duration-300 ${expandedStage === sd.stage.id ? 'rotate-180' : ''}`} />
           </button>
 
-          {expandedStage === sd.stage.id && (
-            <div className="border-t border-border animate-fade-in">
+          {/* Expanded courses */}
+          <div className={`overflow-hidden transition-all duration-500 ease-in-out ${expandedStage === sd.stage.id ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="border-t border-border">
               {sd.courseResults.length === 0 ? (
-                <div className="px-5 py-8 text-center">
-                  <p className="text-[12px] text-muted-foreground font-body">Aucun examen passé dans ce stage</p>
+                <div className="px-6 py-10 text-center">
+                  <ClipboardList className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-[12px] text-muted-foreground font-body">Aucun examen passé dans ce module</p>
                 </div>
               ) : (
                 sd.courseResults.map(cr => (
-                  <div key={cr.course.id} className="border-b border-border/50 last:border-0">
-                    <div className="px-5 py-3 bg-secondary/20 flex items-center gap-2">
-                      <ClipboardList className="w-3.5 h-3.5 text-primary/60" />
-                      <span className="text-[12px] font-semibold font-body text-foreground">{cr.course.title}</span>
+                  <div key={cr.course.id} className="border-b border-border/40 last:border-0">
+                    {/* Course header with barème */}
+                    <div className="px-6 py-3.5 bg-secondary/20 flex items-center gap-3">
+                      <ClipboardList className="w-4 h-4 text-primary/60" />
+                      <span className="text-[13px] font-semibold font-body text-foreground flex-1">{cr.course.title}</span>
+
+                      {/* Barème badge */}
+                      {baremeEditing === cr.course.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="number" min="1" step="0.5"
+                            value={baremeValue}
+                            onChange={e => setBaremeValue(e.target.value)}
+                            className="w-16 h-7 text-[11px] rounded-lg border-primary/30 text-center"
+                            autoFocus
+                            onKeyDown={e => { if (e.key === 'Enter') handleBaremeSave(cr.course.id); if (e.key === 'Escape') setBaremeEditing(null); }}
+                          />
+                          <button onClick={() => handleBaremeSave(cr.course.id)} className="text-[10px] px-2 py-1 rounded-md bg-primary text-white font-semibold hover:bg-primary/90 transition-colors">OK</button>
+                          <button onClick={() => setBaremeEditing(null)} className="text-[10px] px-2 py-1 rounded-md bg-secondary text-muted-foreground font-semibold hover:bg-secondary/80 transition-colors">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setBaremeEditing(cr.course.id); setBaremeValue(String(cr.bareme)); }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/8 hover:bg-primary/15 transition-colors group"
+                          title="Modifier le barème"
+                        >
+                          <Scale className="w-3 h-3 text-primary/60" />
+                          <span className="text-[10px] font-semibold text-primary font-body">Coef. {cr.bareme}</span>
+                          <Pencil className="w-2.5 h-2.5 text-primary/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                      )}
+
                       {cr.avg !== null && (
-                        <span className={`ml-auto text-[12px] font-bold ${cr.avg >= 50 ? 'text-success' : 'text-destructive'}`}>{convertToGrade(cr.avg, 20)}</span>
+                        <span className={`text-[13px] font-bold ml-2 ${gradeColor(cr.avg)}`}>{convertToGrade(cr.avg, 20)}</span>
                       )}
                     </div>
+
+                    {/* Exam rows */}
                     <table className="w-full">
                       <thead>
-                        <tr className="bg-secondary/10">
-                          <th className="text-left px-5 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Examen</th>
+                        <tr className="bg-secondary/5">
+                          <th className="text-left px-6 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Examen</th>
                           <th className="text-center px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Score</th>
                           <th className="text-center px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Note</th>
-                          <th className="text-center px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">%</th>
-                          <th className="text-right px-5 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Date</th>
+                          <th className="text-center px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Progression</th>
+                          <th className="text-right px-6 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Date</th>
                         </tr>
                       </thead>
                       <tbody>
                         {cr.attempts.map(att => (
-                          <tr key={att.id} className="border-t border-border/30 hover:bg-secondary/10 transition-colors">
-                            <td className="px-5 py-2.5 text-[12px] font-medium font-body text-foreground">{att.quizTitle}</td>
-                            <td className="px-3 py-2.5 text-center text-[12px] font-body">
+                          <tr key={att.id} className="border-t border-border/20 hover:bg-secondary/10 transition-colors">
+                            <td className="px-6 py-3 text-[12px] font-medium font-body text-foreground">{att.quizTitle}</td>
+                            <td className="px-3 py-3 text-center text-[12px] font-body">
                               <span className="text-primary font-semibold">{att.correctAnswers || 0}</span>
                               <span className="text-muted-foreground">/{att.totalQuestions || 0}</span>
                             </td>
-                            <td className="px-3 py-2.5 text-center">
-                              <span className={`text-[12px] font-bold ${(att.percentage || 0) >= 50 ? 'text-success' : 'text-destructive'}`}>
+                            <td className="px-3 py-3 text-center">
+                              <span className={`text-[12px] font-bold ${gradeColor(att.percentage || 0)}`}>
                                 {convertToGrade(att.percentage || 0, att.gradeBase)}
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
-                                <div className="w-12 h-1.5 bg-secondary rounded-full overflow-hidden">
-                                  <div className={`h-full rounded-full ${(att.percentage || 0) >= 50 ? 'bg-success' : 'bg-destructive'}`} style={{ width: `${att.percentage || 0}%` }} />
+                            <td className="px-3 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-20 h-2 bg-secondary rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all duration-500 ${gradeBg(att.percentage || 0)}`} style={{ width: `${att.percentage || 0}%` }} />
                                 </div>
-                                <span className="text-[11px] font-semibold font-body">{att.percentage || 0}%</span>
+                                <span className="text-[11px] font-semibold font-body min-w-[32px] text-right">{att.percentage || 0}%</span>
                               </div>
                             </td>
-                            <td className="px-5 py-2.5 text-right text-[11px] text-muted-foreground font-body">
-                              {att.completedAt ? new Date(att.completedAt).toLocaleString('fr-FR') : '—'}
+                            <td className="px-6 py-3 text-right text-[11px] text-muted-foreground font-body">
+                              {att.completedAt ? new Date(att.completedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                             </td>
                           </tr>
                         ))}
@@ -147,30 +306,76 @@ function StudentNotesDetail({ student, onClose }: { student: User; onClose: () =
                 ))
               )}
             </div>
-          )}
+          </div>
         </div>
       ))}
+
+      {/* Empty state */}
+      {attempts.length === 0 && (
+        <div className="rounded-2xl border border-border bg-card p-16 text-center shadow-card">
+          <BarChart3 className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+          <p className="text-[13px] text-muted-foreground font-body">Ce stagiaire n'a passé aucun examen</p>
+        </div>
+      )}
     </div>
   );
 }
 
-/* --- Notes overview table --- */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                     NOTES OVERVIEW TABLE                      */
+/* ═══════════════════════════════════════════════════════════════ */
 function NotesTable({ onViewStudent }: { onViewStudent: (s: User) => void }) {
   const students = getStudents();
   const attempts = getAttempts().filter(a => a.status === 'completed' || a.status === 'submitted');
   const quizzes = getQuizzes();
   const stages = getStages();
+  const courses = getCourses();
 
   const rows = students.map(student => {
     const studentAttempts = attempts.filter(a => a.studentId === student.id);
-    const overallAvg = studentAttempts.length ? Math.round(studentAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / studentAttempts.length) : null;
 
     const stageAvgs: Record<string, number | null> = {};
     stages.forEach(stage => {
+      const stageCourses = courses.filter(c => c.stageId === stage.id);
       const stageQuizzes = quizzes.filter(q => q.stageId === stage.id);
       const stageAttempts = studentAttempts.filter(a => stageQuizzes.some(q => q.id === a.quizId));
-      stageAvgs[stage.id] = stageAttempts.length ? Math.round(stageAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / stageAttempts.length) : null;
+
+      // Weighted by barème
+      const courseGrades = stageCourses.map(course => {
+        const courseQuizzes = stageQuizzes.filter(q => q.courseId === course.id);
+        const courseAttempts = stageAttempts.filter(a => courseQuizzes.some(q => q.id === a.quizId));
+        if (courseAttempts.length === 0) return null;
+        const avg = Math.round(courseAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / courseAttempts.length);
+        return { avg, bareme: course.bareme || 1 };
+      }).filter((g): g is { avg: number; bareme: number } => g !== null);
+
+      if (courseGrades.length === 0) { stageAvgs[stage.id] = null; return; }
+      const totalWeight = courseGrades.reduce((s, g) => s + g.bareme, 0);
+      const weightedSum = courseGrades.reduce((s, g) => s + (g.avg * g.bareme), 0);
+      stageAvgs[stage.id] = Math.round(weightedSum / totalWeight);
     });
+
+    // Overall weighted
+    const allGrades: { avg: number; bareme: number }[] = [];
+    stages.forEach(stage => {
+      const stageCourses = courses.filter(c => c.stageId === stage.id);
+      const stageQuizzes = quizzes.filter(q => q.stageId === stage.id);
+      stageCourses.forEach(course => {
+        const courseQuizzes = stageQuizzes.filter(q => q.courseId === course.id);
+        const courseAttempts = studentAttempts.filter(a => courseQuizzes.some(q => q.id === a.quizId));
+        if (courseAttempts.length > 0) {
+          const avg = Math.round(courseAttempts.reduce((s, a) => s + (a.percentage || 0), 0) / courseAttempts.length);
+          allGrades.push({ avg, bareme: course.bareme || 1 });
+        }
+      });
+    });
+
+    let overallAvg: number | null = null;
+    if (allGrades.length > 0) {
+      const totalWeight = allGrades.reduce((s, g) => s + g.bareme, 0);
+      const weightedSum = allGrades.reduce((s, g) => s + (g.avg * g.bareme), 0);
+      overallAvg = Math.round(weightedSum / totalWeight);
+    }
 
     return { student, overallAvg, stageAvgs };
   });
@@ -180,30 +385,31 @@ function NotesTable({ onViewStudent }: { onViewStudent: (s: User) => void }) {
       <table className="w-full">
         <thead>
           <tr className="border-b border-border bg-secondary/30">
-            <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Nom Complet</th>
+            <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Stagiaire</th>
             <th className="text-left px-4 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Matricule</th>
-            <th className="text-left px-4 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Promotion</th>
             <th className="text-left px-4 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Section</th>
             {stages.map(s => (
               <th key={s.id} className="text-center px-3 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">{s.code}</th>
             ))}
             <th className="text-center px-4 py-3.5 text-[11px] font-semibold text-primary uppercase tracking-wider font-body bg-primary/5">Générale</th>
-            <th className="text-right px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body"></th>
+            <th className="text-right px-5 py-3.5"></th>
           </tr>
         </thead>
         <tbody>
           {rows.map(({ student, overallAvg, stageAvgs }) => (
-            <tr key={student.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+            <tr key={student.id}
+              className="border-b border-border/50 hover:bg-secondary/20 transition-colors cursor-pointer group"
+              onClick={() => onViewStudent(student)}
+            >
               <td className="px-5 py-3.5">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg gradient-muscle flex items-center justify-center text-[11px] font-bold text-primary-foreground shadow-sm">
+                  <div className="w-8 h-8 rounded-lg gradient-muscle flex items-center justify-center text-[11px] font-bold text-primary-foreground shadow-sm group-hover:scale-110 transition-transform">
                     {student.fullName.charAt(0)}
                   </div>
-                  <span className="text-[13px] font-semibold font-body text-foreground">{student.fullName}</span>
+                  <span className="text-[13px] font-semibold font-body text-foreground group-hover:text-primary transition-colors">{student.fullName}</span>
                 </div>
               </td>
-              <td className="px-4 py-3.5 text-[13px] text-muted-foreground font-body font-medium">{student.username}</td>
-              <td className="px-4 py-3.5 text-[12px] text-muted-foreground font-body">{student.promotion || '—'}</td>
+              <td className="px-4 py-3.5 text-[12px] text-muted-foreground font-body font-medium">{student.username}</td>
               <td className="px-4 py-3.5">
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/8 text-primary font-semibold font-body">
                   {student.section === '2eme_section' ? '2ème' : '1ère'}
@@ -212,7 +418,7 @@ function NotesTable({ onViewStudent }: { onViewStudent: (s: User) => void }) {
               {stages.map(stage => (
                 <td key={stage.id} className="px-3 py-3.5 text-center">
                   {stageAvgs[stage.id] !== null ? (
-                    <span className={`text-[12px] font-bold ${stageAvgs[stage.id]! >= 50 ? 'text-success' : 'text-destructive'}`}>
+                    <span className={`text-[12px] font-bold ${gradeColor(stageAvgs[stage.id])}`}>
                       {convertToGrade(stageAvgs[stage.id]!, 20)}
                     </span>
                   ) : (
@@ -228,10 +434,9 @@ function NotesTable({ onViewStudent }: { onViewStudent: (s: User) => void }) {
                 )}
               </td>
               <td className="px-5 py-3.5 text-right">
-                <button onClick={() => onViewStudent(student)}
-                  className="text-[11px] font-semibold text-primary hover:text-primary/80 font-body flex items-center gap-1 ml-auto transition-colors">
-                  Voir les notes <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                <span className="text-[11px] font-semibold text-primary/50 group-hover:text-primary font-body flex items-center gap-1 ml-auto transition-colors">
+                  <Eye className="w-3.5 h-3.5" /> Profil
+                </span>
               </td>
             </tr>
           ))}
@@ -247,13 +452,18 @@ function NotesTable({ onViewStudent }: { onViewStudent: (s: User) => void }) {
   );
 }
 
-/* --- Main component --- */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                      MAIN COMPONENT                           */
+/* ═══════════════════════════════════════════════════════════════ */
+type MainTab = 'list' | 'notes';
+
 export default function AdminStudents() {
   const [students, setStudents] = useState(getStudents());
   const [activeTab, setActiveTab] = useState<MainTab>('list');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
-  const [notesStudent, setNotesStudent] = useState<User | null>(null);
+  const [profileStudent, setProfileStudent] = useState<User | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [form, setForm] = useState({ fullName: '', username: '', password: '', promotion: '', section: '1ere_section' as string });
 
   const refresh = () => setStudents(getStudents());
@@ -261,7 +471,7 @@ export default function AdminStudents() {
   const handleSave = () => {
     const fullName = form.fullName.trim();
     const username = form.username.trim().toUpperCase();
-    if (!fullName || !username) return;
+    if (!fullName || !username) { toast.error('Nom et matricule requis'); return; }
     const user: User = {
       id: editing?.id || genId(), fullName,
       username,
@@ -276,17 +486,32 @@ export default function AdminStudents() {
     setShowForm(false); setEditing(null);
     setForm({ fullName: '', username: '', password: '', promotion: '', section: '1ere_section' });
     refresh();
+    toast.success(editing ? 'Stagiaire modifié' : 'Stagiaire ajouté');
   };
 
-  const toggleDisable = (s: User) => { saveUser({ ...s, disabled: !s.disabled }); refresh(); };
+  const toggleDisable = (s: User) => {
+    saveUser({ ...s, disabled: !s.disabled });
+    refresh();
+    toast.success(s.disabled ? 'Stagiaire activé' : 'Stagiaire désactivé');
+  };
 
-  // If viewing a student's full notes detail
-  if (notesStudent) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <StudentNotesDetail student={notesStudent} onClose={() => setNotesStudent(null)} />
-      </div>
-    );
+  const handleDelete = (s: User) => {
+    deleteUser(s.id);
+    refresh();
+    toast.success('Stagiaire supprimé');
+  };
+
+  // Filtered students
+  const filtered = searchQuery.trim()
+    ? students.filter(s =>
+        s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.username.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : students;
+
+  // If viewing a student's profile
+  if (profileStudent) {
+    return <StudentProfile student={profileStudent} onClose={() => setProfileStudent(null)} />;
   }
 
   return (
@@ -302,38 +527,54 @@ export default function AdminStudents() {
           </h1>
           <p className="text-[13px] text-muted-foreground mt-1 font-body ml-[46px]">{students.length} enregistrés</p>
         </div>
-        {activeTab === 'list' && (
-          <Button onClick={() => { setShowForm(true); setEditing(null); setForm({ fullName: '', username: '', password: '', promotion: '', section: '1ere_section' }); }}
-            className="gradient-muscle text-primary-foreground hover:opacity-90 rounded-xl h-10 text-[13px] shadow-sm gap-2 px-5">
-            <Plus className="w-4 h-4" /> Ajouter
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {activeTab === 'list' && (
+            <Button onClick={() => { setShowForm(true); setEditing(null); setForm({ fullName: '', username: '', password: '', promotion: '', section: '1ere_section' }); }}
+              className="gradient-muscle text-primary-foreground hover:opacity-90 rounded-xl h-10 text-[13px] shadow-sm gap-2 px-5">
+              <Plus className="w-4 h-4" /> Ajouter
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Tab switch */}
-      <div className="flex gap-1 p-1 rounded-xl bg-secondary/50 border border-border w-fit">
-        {[
-          { id: 'list' as MainTab, label: 'Liste des Stagiaires', icon: Users },
-          { id: 'notes' as MainTab, label: 'Notes & Résultats', icon: Award },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-body font-medium transition-all duration-200 ${
-              activeTab === tab.id
-                ? 'gradient-muscle text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-            }`}
-          >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
-          </button>
-        ))}
+      {/* Tab switch + search */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex gap-1 p-1 rounded-xl bg-secondary/50 border border-border">
+          {[
+            { id: 'list' as MainTab, label: 'Liste des Stagiaires', icon: Users },
+            { id: 'notes' as MainTab, label: 'Notes & Résultats', icon: Award },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-body font-medium transition-all duration-200 ${
+                activeTab === tab.id
+                  ? 'gradient-muscle text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'list' && (
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher un stagiaire..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 h-10 w-64 rounded-xl bg-card border-border text-[13px]"
+            />
+          </div>
+        )}
       </div>
 
       {/* NOTES TAB */}
       {activeTab === 'notes' && (
-        <NotesTable onViewStudent={s => setNotesStudent(s)} />
+        <NotesTable onViewStudent={s => setProfileStudent(s)} />
       )}
 
       {/* LIST TAB */}
@@ -366,66 +607,101 @@ export default function AdminStudents() {
             </div>
           )}
 
-          {students.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="rounded-2xl bg-card border border-border p-16 text-center shadow-card">
               <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground text-[13px] font-body">Aucun stagiaire enregistré</p>
+              <p className="text-muted-foreground text-[13px] font-body">
+                {searchQuery ? 'Aucun résultat trouvé' : 'Aucun stagiaire enregistré'}
+              </p>
             </div>
           ) : (
-            <div className="rounded-2xl bg-card border border-border overflow-hidden shadow-elevated">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-secondary/30">
-                    <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Stagiaire</th>
-                    <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Matricule</th>
-                    <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Section</th>
-                    <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Promotion</th>
-                    <th className="text-left px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Statut</th>
-                    <th className="text-right px-5 py-3.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map(s => (
-                    <tr key={s.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg gradient-muscle flex items-center justify-center text-[11px] font-bold text-primary-foreground shadow-sm">
-                            {s.fullName.charAt(0)}
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-semibold font-body text-foreground">{s.fullName}</p>
-                          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filtered.map(s => {
+                const studentAttempts = getAttempts().filter(a => a.studentId === s.id && (a.status === 'completed' || a.status === 'submitted'));
+                const allCourses = getCourses();
+                const allQuizzes = getQuizzes();
+                const allGrades: { avg: number; bareme: number }[] = [];
+                getStages().forEach(stage => {
+                  const stageCourses = allCourses.filter(c => c.stageId === stage.id);
+                  const stageQuizzes = allQuizzes.filter(q => q.stageId === stage.id);
+                  stageCourses.forEach(course => {
+                    const courseQuizzes = stageQuizzes.filter(q => q.courseId === course.id);
+                    const courseAttempts = studentAttempts.filter(a => courseQuizzes.some(q => q.id === a.quizId));
+                    if (courseAttempts.length > 0) {
+                      const avg = Math.round(courseAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / courseAttempts.length);
+                      allGrades.push({ avg, bareme: course.bareme || 1 });
+                    }
+                  });
+                });
+                let overallAvg: number | null = null;
+                if (allGrades.length > 0) {
+                  const totalWeight = allGrades.reduce((sum, g) => sum + g.bareme, 0);
+                  overallAvg = Math.round(allGrades.reduce((sum, g) => sum + (g.avg * g.bareme), 0) / totalWeight);
+                }
+
+                return (
+                  <div key={s.id}
+                    className="rounded-2xl bg-card border border-border p-5 shadow-card hover:shadow-elevated transition-all duration-300 cursor-pointer group hover:border-primary/30 hover:-translate-y-0.5"
+                    onClick={() => setProfileStudent(s)}
+                  >
+                    {/* Card header */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl gradient-muscle flex items-center justify-center text-lg font-bold text-primary-foreground shadow-sm group-hover:scale-105 transition-transform">
+                          {s.fullName.charAt(0)}
                         </div>
-                      </td>
-                      <td className="px-5 py-3.5 text-[13px] text-muted-foreground font-body font-medium">{s.username}</td>
-                      <td className="px-5 py-3.5">
-                        <span className="text-[11px] px-2.5 py-1 rounded-full bg-primary/8 text-primary font-semibold font-body">
-                          {s.section === '2eme_section' ? '2ème' : '1ère'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-[13px] text-muted-foreground font-body">{s.promotion || '—'}</td>
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full font-semibold font-body ${
-                          s.disabled ? 'bg-destructive/8 text-destructive' : 'bg-success/8 text-success'
-                        }`}>
-                          {s.disabled ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                          {s.disabled ? 'Désactivé' : 'Actif'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex justify-end gap-1">
-                          <button onClick={() => { setEditing(s); setForm({ fullName: s.fullName, username: s.username, password: '', promotion: s.promotion || '', section: s.section || '1ere_section' }); setShowForm(true); }}
-                            title="Modifier" className="p-2 rounded-lg hover:bg-primary/8 text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={() => toggleDisable(s)} title={s.disabled ? 'Activer' : 'Désactiver'}
-                            className="p-2 rounded-lg hover:bg-warning/8 text-muted-foreground hover:text-warning transition-colors"><Ban className="w-4 h-4" /></button>
-                          <button onClick={() => { deleteUser(s.id); refresh(); }} title="Supprimer"
-                            className="p-2 rounded-lg hover:bg-destructive/8 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        <div>
+                          <p className="text-[14px] font-semibold font-body text-foreground group-hover:text-primary transition-colors leading-tight">{s.fullName}</p>
+                          <p className="text-[11px] text-muted-foreground font-body mt-0.5">{s.username}</p>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold font-body ${
+                        s.disabled ? 'bg-destructive/8 text-destructive' : 'bg-success/8 text-success'
+                      }`}>
+                        {s.disabled ? <Ban className="w-2.5 h-2.5" /> : <CheckCircle2 className="w-2.5 h-2.5" />}
+                        {s.disabled ? 'Inactif' : 'Actif'}
+                      </span>
+                    </div>
+
+                    {/* Info row */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/8 text-primary font-semibold font-body">
+                        {s.section === '2eme_section' ? '2ème Section' : '1ère Section'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-body">{s.promotion || '—'}</span>
+                    </div>
+
+                    {/* Grade ring */}
+                    <div className="flex items-center justify-between pt-3 border-t border-border/50">
+                      <div className="flex items-center gap-2">
+                        {overallAvg !== null ? (
+                          <GradeRing pct={overallAvg} size={40} stroke={3} label={convertToGrade(overallAvg, 20)} />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                            <span className="text-[10px] text-muted-foreground">—</span>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-[10px] text-muted-foreground font-body">Note Générale</p>
+                          <p className="text-[11px] font-semibold font-body text-foreground">
+                            {studentAttempts.length} examen{studentAttempts.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => { setEditing(s); setForm({ fullName: s.fullName, username: s.username, password: '', promotion: s.promotion || '', section: s.section || '1ere_section' }); setShowForm(true); }}
+                          title="Modifier" className="p-1.5 rounded-lg hover:bg-primary/8 text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => toggleDisable(s)} title={s.disabled ? 'Activer' : 'Désactiver'}
+                          className="p-1.5 rounded-lg hover:bg-amber-500/8 text-muted-foreground hover:text-amber-500 transition-colors"><Ban className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleDelete(s)} title="Supprimer"
+                          className="p-1.5 rounded-lg hover:bg-destructive/8 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>
@@ -433,5 +709,3 @@ export default function AdminStudents() {
     </div>
   );
 }
-
-

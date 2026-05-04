@@ -173,11 +173,11 @@ function seedData() {
   const courses = get<Course[]>(KEYS.courses, []);
   if (courses.length === 0) {
     const defaultCourses: Course[] = [
-      { id: 'course-1', stageId: 'stage-cat1', title: 'Anatomie musculaire', description: 'Bases de l\'anatomie', files: [], assignedStudents: [], createdAt: new Date().toISOString() },
-      { id: 'course-2', stageId: 'stage-cat1', title: 'Physiologie du sport', description: 'Fonctionnement du corps', files: [], assignedStudents: [], createdAt: new Date().toISOString() },
-      { id: 'course-3', stageId: 'stage-cat2', title: 'Entraînement avancé', description: 'Techniques avancées', files: [], assignedStudents: [], createdAt: new Date().toISOString() },
-      { id: 'course-4', stageId: 'stage-be', title: 'Biomécanique', description: 'Mécanique du mouvement', files: [], assignedStudents: [], createdAt: new Date().toISOString() },
-      { id: 'course-5', stageId: 'stage-bs', title: 'Nutrition sportive', description: 'Alimentation et performance', files: [], assignedStudents: [], createdAt: new Date().toISOString() },
+      { id: 'course-1', stageId: 'stage-cat1', title: 'Anatomie musculaire', description: 'Bases de l\'anatomie', files: [], assignedStudents: [], createdAt: new Date().toISOString(), bareme: 2 },
+      { id: 'course-2', stageId: 'stage-cat1', title: 'Physiologie du sport', description: 'Fonctionnement du corps', files: [], assignedStudents: [], createdAt: new Date().toISOString(), bareme: 3 },
+      { id: 'course-3', stageId: 'stage-cat2', title: 'Entraînement avancé', description: 'Techniques avancées', files: [], assignedStudents: [], createdAt: new Date().toISOString(), bareme: 2 },
+      { id: 'course-4', stageId: 'stage-be', title: 'Biomécanique', description: 'Mécanique du mouvement', files: [], assignedStudents: [], createdAt: new Date().toISOString(), bareme: 4 },
+      { id: 'course-5', stageId: 'stage-bs', title: 'Nutrition sportive', description: 'Alimentation et performance', files: [], assignedStudents: [], createdAt: new Date().toISOString(), bareme: 3 },
     ];
     set(KEYS.courses, defaultCourses);
   }

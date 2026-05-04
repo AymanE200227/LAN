@@ -29,6 +29,7 @@ export interface Course {
   files: CourseFile[];
   assignedStudents: string[];
   createdAt: string;
+  bareme?: number;
 }
 
 export interface CourseFile {
