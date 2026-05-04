@@ -653,7 +653,12 @@ export default function AdminStudents() {
                         onClick={() => setProfileStudent(s)}
                       >
                         <td className="px-5 py-3">
-                          <span className="text-[13px] font-medium font-body text-foreground">{s.fullName}</span>
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full gradient-muscle flex items-center justify-center text-[11px] font-bold text-primary-foreground">
+                              {s.fullName.charAt(0)}
+                            </div>
+                            <span className="text-[13px] font-medium font-body text-foreground">{s.fullName}</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-[12px] text-muted-foreground font-body">{s.username}</td>
                         <td className="px-4 py-3">
