@@ -608,100 +608,99 @@ export default function AdminStudents() {
           )}
 
           {filtered.length === 0 ? (
-            <div className="rounded-2xl bg-card border border-border p-16 text-center shadow-card">
-              <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+            <div className="rounded-xl bg-card border border-border p-16 text-center">
+              <Users className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground text-[13px] font-body">
                 {searchQuery ? 'Aucun résultat trouvé' : 'Aucun stagiaire enregistré'}
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map(s => {
-                const studentAttempts = getAttempts().filter(a => a.studentId === s.id && (a.status === 'completed' || a.status === 'submitted'));
-                const allCourses = getCourses();
-                const allQuizzes = getQuizzes();
-                const allGrades: { avg: number; bareme: number }[] = [];
-                getStages().forEach(stage => {
-                  const stageCourses = allCourses.filter(c => c.stageId === stage.id);
-                  const stageQuizzes = allQuizzes.filter(q => q.stageId === stage.id);
-                  stageCourses.forEach(course => {
-                    const courseQuizzes = stageQuizzes.filter(q => q.courseId === course.id);
-                    const courseAttempts = studentAttempts.filter(a => courseQuizzes.some(q => q.id === a.quizId));
-                    if (courseAttempts.length > 0) {
-                      const avg = Math.round(courseAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / courseAttempts.length);
-                      allGrades.push({ avg, bareme: course.bareme || 1 });
+            <div className="rounded-xl bg-card border border-border overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/30">
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Nom</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Matricule</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Section</th>
+                    <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Promotion</th>
+                    <th className="text-center px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Note Générale</th>
+                    <th className="text-center px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Examens</th>
+                    <th className="text-center px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Statut</th>
+                    <th className="text-right px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider font-body">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(s => {
+                    const studentAttempts = getAttempts().filter(a => a.studentId === s.id && (a.status === 'completed' || a.status === 'submitted'));
+                    const allCourses = getCourses();
+                    const allQuizzes = getQuizzes();
+                    const allGrades: { avg: number; bareme: number }[] = [];
+                    getStages().forEach(stage => {
+                      const stageCourses = allCourses.filter(c => c.stageId === stage.id);
+                      const stageQuizzes = allQuizzes.filter(q => q.stageId === stage.id);
+                      stageCourses.forEach(course => {
+                        const courseQuizzes = stageQuizzes.filter(q => q.courseId === course.id);
+                        const courseAttempts = studentAttempts.filter(a => courseQuizzes.some(q => q.id === a.quizId));
+                        if (courseAttempts.length > 0) {
+                          const avg = Math.round(courseAttempts.reduce((sum, a) => sum + (a.percentage || 0), 0) / courseAttempts.length);
+                          allGrades.push({ avg, bareme: course.bareme || 1 });
+                        }
+                      });
+                    });
+                    let overallAvg: number | null = null;
+                    if (allGrades.length > 0) {
+                      const totalWeight = allGrades.reduce((sum, g) => sum + g.bareme, 0);
+                      overallAvg = Math.round(allGrades.reduce((sum, g) => sum + (g.avg * g.bareme), 0) / totalWeight);
                     }
-                  });
-                });
-                let overallAvg: number | null = null;
-                if (allGrades.length > 0) {
-                  const totalWeight = allGrades.reduce((sum, g) => sum + g.bareme, 0);
-                  overallAvg = Math.round(allGrades.reduce((sum, g) => sum + (g.avg * g.bareme), 0) / totalWeight);
-                }
 
-                return (
-                  <div key={s.id}
-                    className="rounded-2xl bg-card border border-border p-5 shadow-card hover:shadow-elevated transition-all duration-300 cursor-pointer group hover:border-primary/30 hover:-translate-y-0.5"
-                    onClick={() => setProfileStudent(s)}
-                  >
-                    {/* Card header */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl gradient-muscle flex items-center justify-center text-lg font-bold text-primary-foreground shadow-sm group-hover:scale-105 transition-transform">
-                          {s.fullName.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-[14px] font-semibold font-body text-foreground group-hover:text-primary transition-colors leading-tight">{s.fullName}</p>
-                          <p className="text-[11px] text-muted-foreground font-body mt-0.5">{s.username}</p>
-                        </div>
-                      </div>
-                      <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold font-body ${
-                        s.disabled ? 'bg-destructive/8 text-destructive' : 'bg-success/8 text-success'
-                      }`}>
-                        {s.disabled ? <Ban className="w-2.5 h-2.5" /> : <CheckCircle2 className="w-2.5 h-2.5" />}
-                        {s.disabled ? 'Inactif' : 'Actif'}
-                      </span>
-                    </div>
-
-                    {/* Info row */}
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/8 text-primary font-semibold font-body">
-                        {s.section === '2eme_section' ? '2ème Section' : '1ère Section'}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-body">{s.promotion || '—'}</span>
-                    </div>
-
-                    {/* Grade ring */}
-                    <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                      <div className="flex items-center gap-2">
-                        {overallAvg !== null ? (
-                          <GradeRing pct={overallAvg} size={40} stroke={3} label={convertToGrade(overallAvg, 20)} />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                            <span className="text-[10px] text-muted-foreground">—</span>
+                    return (
+                      <tr key={s.id}
+                        className="border-b border-border/50 hover:bg-secondary/20 transition-colors cursor-pointer"
+                        onClick={() => setProfileStudent(s)}
+                      >
+                        <td className="px-5 py-3">
+                          <span className="text-[13px] font-medium font-body text-foreground">{s.fullName}</span>
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-muted-foreground font-body">{s.username}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/8 text-primary font-semibold font-body">
+                            {s.section === '2eme_section' ? '2ème' : '1ère'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-muted-foreground font-body">{s.promotion || '—'}</td>
+                        <td className="px-4 py-3 text-center">
+                          {overallAvg !== null ? (
+                            <span className={`text-[13px] font-bold ${gradeColor(overallAvg)}`}>{convertToGrade(overallAvg, 20)}</span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center text-[12px] font-body text-muted-foreground">
+                          {studentAttempts.length}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold font-body ${
+                            s.disabled ? 'bg-destructive/8 text-destructive' : 'bg-success/8 text-success'
+                          }`}>
+                            {s.disabled ? <Ban className="w-2.5 h-2.5" /> : <CheckCircle2 className="w-2.5 h-2.5" />}
+                            {s.disabled ? 'Inactif' : 'Actif'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex gap-0.5 justify-end">
+                            <button onClick={() => { setEditing(s); setForm({ fullName: s.fullName, username: s.username, password: '', promotion: s.promotion || '', section: s.section || '1ere_section' }); setShowForm(true); }}
+                              title="Modifier" className="p-1.5 rounded-lg hover:bg-primary/8 text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => toggleDisable(s)} title={s.disabled ? 'Activer' : 'Désactiver'}
+                              className="p-1.5 rounded-lg hover:bg-amber-500/8 text-muted-foreground hover:text-amber-500 transition-colors"><Ban className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => handleDelete(s)} title="Supprimer"
+                              className="p-1.5 rounded-lg hover:bg-destructive/8 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
-                        )}
-                        <div>
-                          <p className="text-[10px] text-muted-foreground font-body">Note Générale</p>
-                          <p className="text-[11px] font-semibold font-body text-foreground">
-                            {studentAttempts.length} examen{studentAttempts.length !== 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => { setEditing(s); setForm({ fullName: s.fullName, username: s.username, password: '', promotion: s.promotion || '', section: s.section || '1ere_section' }); setShowForm(true); }}
-                          title="Modifier" className="p-1.5 rounded-lg hover:bg-primary/8 text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => toggleDisable(s)} title={s.disabled ? 'Activer' : 'Désactiver'}
-                          className="p-1.5 rounded-lg hover:bg-amber-500/8 text-muted-foreground hover:text-amber-500 transition-colors"><Ban className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleDelete(s)} title="Supprimer"
-                          className="p-1.5 rounded-lg hover:bg-destructive/8 text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </>
