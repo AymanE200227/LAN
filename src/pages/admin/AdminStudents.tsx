@@ -168,7 +168,7 @@ function StudentProfile({ student, onClose }: { student: User; onClose: () => vo
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-4 divide-x divide-border bg-card">
+        <div className="grid grid-cols-3 divide-x divide-border bg-card">
           <div className="px-5 py-4 text-center">
             <GradeRing pct={overallData.avg} size={52} stroke={4} label={convertToGrade(overallData.avg, 20)} />
             <p className="text-[10px] text-muted-foreground font-body mt-1.5 uppercase tracking-wider">Note Générale</p>
@@ -180,12 +180,6 @@ function StudentProfile({ student, onClose }: { student: User; onClose: () => vo
           <div className="px-5 py-4 text-center flex flex-col items-center justify-center">
             <span className="text-2xl font-bold font-display text-foreground">{overallData.totalCourses}</span>
             <p className="text-[10px] text-muted-foreground font-body mt-0.5 uppercase tracking-wider">Cours évalués</p>
-          </div>
-          <div className="px-5 py-4 text-center flex flex-col items-center justify-center">
-            <span className={`text-2xl font-bold font-display ${overallData.avg >= 50 ? 'text-success' : 'text-destructive'}`}>
-              {overallData.avg >= 50 ? 'Admis' : 'Non admis'}
-            </span>
-            <p className="text-[10px] text-muted-foreground font-body mt-0.5 uppercase tracking-wider">Statut</p>
           </div>
         </div>
       </div>
